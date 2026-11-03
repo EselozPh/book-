@@ -1,7 +1,7 @@
 {
- "name": "Bookì",
+ "name": "La mortalità è un limite alla lettura",
  "short_name": "Bookì",
- "description": "Un altro libro? Sì!",
+ "description": "Desideri, libri da leggere, letture e calendario dei letti",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
