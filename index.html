@@ -66,16 +66,25 @@ button.ghost{background:transparent;color:var(--fg)}
 .row-actions button{width:auto;padding:8px 12px;font-size:12px;white-space:nowrap}
 .dates{font-size:12px;color:var(--mut);margin:0 0 6px}
 .month-h{display:flex;justify-content:space-between;margin:24px 0 0;padding-bottom:6px;border-bottom:2px solid var(--fg)}
-.bar{height:8px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:10px}
+.bar{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:9px}
 #goal-fill{height:100%;width:0;background:#d90429;border-radius:999px;transition:width .4s}
 #cal-view{position:fixed;inset:0;background:var(--bg);color:var(--fg);z-index:50;overflow:auto;padding:calc(18px + env(safe-area-inset-top)) 18px calc(40px + env(safe-area-inset-bottom))}
 .cal-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px}
 .yearnav{display:flex;align-items:center;gap:6px}
 .cal-year{font-family:var(--serif);font-size:24px;font-weight:700;min-width:64px;text-align:center}
-.goal{border:1px solid var(--fg);padding:14px 16px;margin:0 0 22px}
+.goal{background:var(--soft);border:1px solid var(--line);border-radius:22px;padding:12px 16px;margin:0 0 12px}
 .goal.click{cursor:pointer}
+.goal.click:active{opacity:.85}
 .goal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.goal-hint{font-size:12px;color:var(--mut);margin:10px 0 0}
+.goal .small-btn{padding:6px 12px;font-size:11px}
+.goal-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px}
+.goal-num{font-family:var(--serif);font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.goal-num small{font-family:system-ui,-apple-system,sans-serif;font-size:12px;font-weight:400;letter-spacing:0;color:var(--mut);margin-left:5px}
+.goal-pct{font-family:var(--serif);font-size:19px}
+.goal-hint{font-size:11px;color:var(--mut);margin:9px 0 0}
+.backup-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 6px}
+.backup-row button{padding:7px 13px;font-size:11px}
+#backup-msg{margin:0 0 14px}
 .stars{display:inline-flex;gap:2px;vertical-align:middle;color:var(--fg)}
 .star{position:relative;display:inline-block;width:var(--ss,14px);height:var(--ss,14px)}
 .star svg{position:absolute;inset:0;width:100%;height:100%}
@@ -91,6 +100,12 @@ button.ghost{background:transparent;color:var(--fg)}
  <button type="button" id="btn-scanner" class="small-btn">Scansiona ISBN</button>
 </header>
 <div id="goal-box"></div>
+<div class="backup-row">
+ <button type="button" id="btn-export" class="small-btn ghost">Esporta backup</button>
+ <button type="button" id="btn-import" class="small-btn ghost">Importa backup</button>
+ <input type="file" id="file-import" accept=".json,application/json" hidden>
+</div>
+<div id="backup-msg" role="status" aria-live="polite"></div>
 
 <section id="scanner-container" class="card" hidden>
  <div id="reader"></div>
@@ -127,16 +142,10 @@ button.ghost{background:transparent;color:var(--fg)}
 <section style="margin-bottom:8px">
  <p class="label">La tua lista</p>
  <div id="tabs">
-  <button type="button" class="small-btn tab" data-tab="buy" id="tab-buy">Desideri</button>
-  <button type="button" class="small-btn tab" data-tab="pile" id="tab-pile">Da leggere</button>
   <button type="button" class="small-btn tab" data-tab="reading" id="tab-reading">In lettura</button>
+  <button type="button" class="small-btn tab" data-tab="pile" id="tab-pile">Da leggere</button>
+  <button type="button" class="small-btn tab" data-tab="buy" id="tab-buy">Desideri</button>
  </div>
- <div style="display:flex;gap:8px;margin:0 0 6px;flex-wrap:wrap">
-  <button type="button" id="btn-export" class="small-btn ghost">Esporta backup</button>
-  <button type="button" id="btn-import" class="small-btn ghost">Importa backup</button>
-  <input type="file" id="file-import" accept=".json,application/json" hidden>
- </div>
- <div id="backup-msg" role="status" aria-live="polite"></div>
  <input type="search" id="inp-filter" placeholder="Filtra per titolo, autore, editore, ISBN o note">
  <div id="sort-row" style="display:flex;align-items:center;gap:8px">
   <label for="sel-sort" class="muted" style="font-size:12px;white-space:nowrap">Ordina</label>
@@ -506,7 +515,7 @@ function monthLabel(ym){const p=ym.split('-');return new Date(+p[0],+p[1]-1,1).t
 const LISTNAME={buy:'Desideri',pile:'Da leggere',reading:'In lettura',read:'Letti'};
 const normSt=v=>({buy:'buy',wish:'buy',pile:'pile',toread:'pile',reading:'reading',read:'read'}[String(v)]||'buy');
 const clampRating=v=>{v=Math.round((Number(v)||0)*2)/2;return v<0?0:v>5?5:v;};
-let tab='buy',detailId=null;
+let tab='reading',detailId=null;
 let goals={};try{goals=JSON.parse(localStorage.getItem('boomer_goals_v1')||'{}')||{};}catch(e){goals={};}
 function saveGoals(){try{localStorage.setItem('boomer_goals_v1',JSON.stringify(goals));}catch(e){}}
 
@@ -629,12 +638,15 @@ function goalNode(year,clickable){
  const eb=document.createElement('button');eb.type='button';eb.className='small-btn ghost';eb.textContent=target?'Modifica':'Imposta';
  eb.addEventListener('click',e=>{e.stopPropagation();editGoal(year);});
  head.append(lab,eb);box.appendChild(head);
- const tx=document.createElement('p');tx.style.cssText='font-family:var(--serif);font-size:24px;margin:10px 0 0';
- tx.textContent=target?done+' / '+target+' libri · '+pct+'%':done+(done===1?' libro letto':' libri letti')+' nel '+year;
- box.appendChild(tx);
- if(target){const bar=document.createElement('div');bar.className='bar';const f=document.createElement('div');f.id='';f.style.cssText='height:100%;border-radius:999px;background:#d90429;width:'+Math.min(100,pct)+'%';f.className='goal-fill';bar.appendChild(f);box.appendChild(bar);}
+ const row=document.createElement('div');row.className='goal-row';
+ const num=document.createElement('span');num.className='goal-num';num.textContent=done+(target?' / '+target:'');
+ const sm=document.createElement('small');sm.textContent=target?'libri':(done===1?'libro letto':'libri letti');num.appendChild(sm);
+ row.appendChild(num);
+ if(target){const pc=document.createElement('span');pc.className='goal-pct';pc.textContent=pct+'%';row.appendChild(pc);}
+ box.appendChild(row);
+ if(target){const bar=document.createElement('div');bar.className='bar';const f=document.createElement('div');f.style.cssText='height:100%;border-radius:999px;background:#d90429;width:'+Math.min(100,pct)+'%';bar.appendChild(f);box.appendChild(bar);}
  if(clickable){
-  const h=document.createElement('p');h.className='goal-hint';h.textContent='Apri il calendario dei libri letti →';box.appendChild(h);
+  const h=document.createElement('p');h.className='goal-hint';h.textContent='Calendario dei libri letti →';box.appendChild(h);
   box.tabIndex=0;box.setAttribute('role','button');
   box.addEventListener('click',()=>openCalendar(year));
   box.addEventListener('keydown',e=>{if(e.key==='Enter')openCalendar(year);});
@@ -644,7 +656,7 @@ function goalNode(year,clickable){
 function renderApp(){
  const cnt={buy:0,pile:0,reading:0,read:0};
  books.forEach(b=>{cnt[stOf(b)]++;});
- [['buy','Desideri'],['pile','Da leggere'],['reading','In lettura']].forEach(([k,n])=>{const el=$('tab-'+k);el.textContent=n+' '+cnt[k];el.classList.toggle('ghost',k!==tab);});
+ [['reading','In lettura'],['pile','Da leggere'],['buy','Desideri']].forEach(([k,n])=>{const el=$('tab-'+k);el.textContent=n+' '+cnt[k];el.classList.toggle('ghost',k!==tab);});
  $('counter').textContent=books.length+' '+(books.length===1?'libro':'libri')+' in tutto · '+cnt.read+' letti';
  $('goal-box').replaceChildren(goalNode(new Date().getFullYear(),true));
  const filter=normalize($('inp-filter').value),sort=$('sel-sort').value;
@@ -787,6 +799,14 @@ async function startScanner(){
  }catch(e){await stopScanner();showMsg('Non riesco ad avviare la fotocamera. Concedi il permesso Fotocamera. '+(e.message||''),true);}
 }
 
+function clearSearchUI(){
+ if($('inp-title').value.trim())return;
+ if(searchController){searchController.abort();searchController=null;}
+ $('btn-search').disabled=false;$('btn-search').textContent='Cerca';
+ $('search-results-container').style.display='none';$('search-results-list').replaceChildren();showMsg('');
+}
+$('inp-title').addEventListener('input',clearSearchUI);
+$('inp-title').addEventListener('search',clearSearchUI);
 $('btn-search').addEventListener('click',()=>performOnlineSearch());
 $('inp-title').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();performOnlineSearch();}});
 $('btn-save').addEventListener('click',addBook);
