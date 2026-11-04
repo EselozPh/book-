@@ -296,7 +296,7 @@ function mergeResults(all,query){
  const score=r=>{
   const h=normalize(r.title+' '+r.authors.join(' ')+' '+r.publisher);
   const rel=toks.length?toks.filter(t=>h.includes(t)).length/toks.length:1;
-  return rel*3+(r.publisher?.6:0)+(r.cover?.5:0)+(r.isbn?.3:0)+(/^it/.test(r.lang)?.5:0)+(r.source==='Feltrinelli'?.8:0)+(r.year?Math.min(.3,(parseInt(r.year,10)-1900)/1000):0);
+  return rel*3+(r.publisher?.6:0)+(r.cover?.5:0)+(r.isbn?.3:0)+(/^it/.test(r.lang)?.5:0)+(r.source==='Feltrinelli'?.8:0)+(/^(97888|97912)/.test(cleanIsbn(r.isbn))?.6:0)+(r.year?Math.min(.3,(parseInt(r.year,10)-1900)/1000):0);
  };
  return [...map.values()].map(r=>({r,s:score(r)})).sort((a,b)=>b.s-a.s).map(x=>x.r).slice(0,40);
 }
@@ -356,7 +356,7 @@ async function searchOLParams(params,signal){
  return out;
 }
 /* Feltrinelli/IBS: copre le novità italiane assenti dai cataloghi gratuiti. Legge la scheda prodotto tramite proxy CORS. */
-const PUBLIC_PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
+const PUBLIC_PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u),u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u)];
 const proxies=()=>[...(WORKER_URL?[u=>WORKER_URL.replace(/\/$/,'')+'/?k='+encodeURIComponent(WORKER_KEY)+'&url='+encodeURIComponent(u)]:[]),...PUBLIC_PROXIES];
 async function fetchText(url,signal){
  let last;
@@ -424,7 +424,7 @@ async function performOnlineSearch(over){
  showMsg('Ricerca in corso su più cataloghi…');
  try{
   const jobs=[['Google',searchGoogle(query,s,'&langRestrict=it')],['Google',searchGoogle(query,s)],['Open Library',searchOpenLibrary(query,s)]];
-  if(WORKER_URL||isIsbnQuery(query))jobs.push(['Feltrinelli',feltrinelliSearch(query,s)]);
+  jobs.push(['Feltrinelli',feltrinelliSearch(query,s)]);
   if(!isIsbnQuery(query)){
    jobs.push(['Open Library',searchOpenLibrary(query,s,'&lang=ita')],['Apple Books',searchApple(query,s)]);
    splitVariants(query).forEach(v=>{
@@ -436,7 +436,7 @@ async function performOnlineSearch(over){
   if(s.aborted)return;
   const count={},fail={};
   settled.forEach((x,i)=>{const n=jobs[i][0];count[n]=count[n]||0;if(x.status==='fulfilled')count[n]+=x.value.length;else fail[n]=(x.reason&&x.reason.message)||'errore';});
-  const diag=Object.keys(count).map(n=>n+' '+count[n]+(fail[n]?' (⚠ '+fail[n]+')':'')).join(' · ');
+  const diag=Object.keys(count).map(n=>n+' '+count[n]+(fail[n]?' (⚠ '+fail[n]+')':'')).join(' · ')+' · Worker '+(WORKER_URL?'sì':'NO');
   const all=settled.filter(x=>x.status==='fulfilled').flatMap(x=>x.value);
   const results=mergeResults(all,query);
   if(results.length){renderSearchResults(results);showMsg('Trovate '+results.length+' edizioni. Tocca + per scegliere. ['+diag+']');}
