@@ -90,6 +90,15 @@ button.ghost{background:transparent;color:var(--fg)}
 .star svg{position:absolute;inset:0;width:100%;height:100%}
 .stars.edit .star{cursor:pointer}
 .pause-tag{display:inline-block;border:1px solid var(--fg);padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;margin:2px 4px 0 0}
+.editable{cursor:text;border-radius:8px;padding:1px 5px;margin:0 -5px;transition:background .15s}
+.editable:hover{background:var(--soft)}
+.empty-val{color:var(--mut);font-style:italic}
+.edit-in{width:100%;font:inherit;color:inherit;background:var(--soft);border:1px solid var(--fg);border-radius:12px;padding:8px 11px;margin:0;outline:0}
+textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:8px 15px;font-size:12px}
+.m-text{font-size:14px;line-height:1.55;margin:0;white-space:pre-line}
+#m-cover.editable{cursor:pointer}
 @media(max-width:380px){.form-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -176,7 +185,8 @@ button.ghost{background:transparent;color:var(--fg)}
    <h2 id="m-title"></h2>
    <button type="button" id="btn-x-modal" aria-label="Chiudi" class="small-btn ghost" style="border:0;font-size:22px;padding:0 6px">×</button>
   </div>
-  <p id="m-author" class="muted" style="font-size:14px;margin:0 0 18px"></p>
+  <p id="m-author" class="muted" style="font-size:14px;margin:0 0 6px"></p>
+  <p class="muted" style="font-size:11px;margin:0 0 16px">Tocca copertina, titolo, autore, dettagli, note o trama per modificarli.</p>
   <div style="display:flex;gap:16px;margin-bottom:8px">
    <img id="m-cover" class="cover" alt="Copertina" style="width:96px;height:138px;flex-shrink:0">
    <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
@@ -185,7 +195,10 @@ button.ghost{background:transparent;color:var(--fg)}
     <p class="m-row"><b>ISBN</b><span id="m-isbn"></span></p>
    </div>
   </div>
-  <div id="m-notes-box"></div>
+  <p class="label" style="margin-top:18px">Formato</p>
+  <div id="m-formats" class="chips"></div>
+  <p class="label" style="margin-top:18px">Note</p>
+  <p id="m-notes" class="m-text"></p>
   <div id="m-rating-box" style="display:none">
    <p class="label" style="margin-top:20px">Voto</p>
    <div style="display:flex;align-items:center;gap:12px"><span id="m-stars"></span><span id="m-rating-text" class="muted" style="font-size:13px"></span></div>
@@ -197,7 +210,7 @@ button.ghost{background:transparent;color:var(--fg)}
    <div><span class="muted" style="font-size:11px">Fine</span><input type="date" id="m-end"></div>
   </div>
   <p class="label" style="margin-top:20px">Trama</p>
-  <p id="m-desc" style="font-size:14px;line-height:1.65;margin:0;white-space:pre-line"></p>
+  <p id="m-desc" class="m-text" style="line-height:1.65"></p>
   <button type="button" id="btn-close-modal" class="ghost" style="width:100%;margin-top:24px">Chiudi</button>
  </div>
 </div>
@@ -529,7 +542,7 @@ function addBookObject(book){
 function newBook(f){
  const st=ST.includes(f.status)?f.status:$('sel-dest').value;
  return {id:(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()),title:f.title,author:f.author||'',publisher:f.publisher||'',
-  year:f.year||'',isbn:f.isbn||'',notes:f.notes||'',status:st,startDate:st==='reading'?today():'',endDate:'',rating:0,paused:false,cover:safeUrl(f.cover||''),
+  year:f.year||'',isbn:f.isbn||'',notes:f.notes||'',status:st,startDate:st==='reading'?today():'',endDate:'',rating:0,paused:false,formats:[],cover:safeUrl(f.cover||''),
   description:f.description||'Nessuna trama disponibile.',createdAt:Date.now()};
 }
 function addBook(){
@@ -606,7 +619,7 @@ function bookRow(book){
  if(dl){const d=document.createElement('p');d.className='dates';d.textContent=dl;info.appendChild(d);}
  const tags=document.createElement('div');
  if(st==='pile'&&book.paused){const pt=document.createElement('span');pt.className='pause-tag';pt.textContent='❚❚ In pausa';tags.appendChild(pt);}
- [book.publisher,book.year].filter(Boolean).forEach(x=>{const s=document.createElement('span');s.className='tag';s.textContent=x;tags.appendChild(s);});
+ [...(book.formats||[]).map(k=>(FORMATS.find(f=>f[0]===k)||[0,k])[1]),book.publisher,book.year].filter(Boolean).forEach(x=>{const s=document.createElement('span');s.className='tag';s.textContent=x;tags.appendChild(s);});
  info.appendChild(tags);
  if(book.notes){const n=document.createElement('p');n.className='note';n.textContent=book.notes;info.appendChild(n);}
  main.append(img,info);
@@ -698,17 +711,65 @@ function renderCalendar(){
  if(nodate.length){list.appendChild(listHeader('Senza data',nodate.length));nodate.forEach(b=>list.appendChild(bookRow(b)));}
  if(!list.children.length)emptyMsg(list,'Nessun libro letto nel '+calYear+'.');
 }
+const FORMATS=[['paper','Brossura'],['ebook','E-book'],['audio','Audiolibro']],FORMAT_KEYS=FORMATS.map(f=>f[0]);
+const curBook=()=>books.find(x=>String(x.id)===String(detailId));
+function setVal(el,val,ph){el.textContent=val||ph;el.classList.toggle('empty-val',!val);}
+function fillDetail(b){
+ setVal($('m-title'),b.title,'Senza titolo');
+ setVal($('m-author'),b.author,'Autore sconosciuto');
+ setVal($('m-pub'),b.publisher,'Non disponibile');
+ setVal($('m-year'),b.year,'Non disponibile');
+ setVal($('m-isbn'),b.isbn,'Non disponibile');
+ setVal($('m-notes'),b.notes,'Aggiungi una nota');
+ setVal($('m-desc'),b.description&&b.description!=='Nessuna trama disponibile.'?b.description:'','Aggiungi la trama');
+ setCover($('m-cover'),[b.cover,b.isbn&&'https://covers.openlibrary.org/b/isbn/'+cleanIsbn(b.isbn)+'-L.jpg?default=false'].filter(Boolean),b.title);
+ renderFormats(b);
+}
+function renderFormats(b){
+ const box=$('m-formats');box.replaceChildren();
+ const cur=Array.isArray(b.formats)?b.formats:[];
+ FORMATS.forEach(([k,label])=>{
+  const on=cur.includes(k),btn=document.createElement('button');
+  btn.type='button';btn.className='chip small-btn'+(on?'':' ghost');btn.textContent=label;btn.setAttribute('aria-pressed',String(on));
+  btn.addEventListener('click',()=>{
+   const bb=curBook();if(!bb)return;
+   const f=new Set(Array.isArray(bb.formats)?bb.formats:[]);f.has(k)?f.delete(k):f.add(k);
+   bb.formats=FORMAT_KEYS.filter(x=>f.has(x));persist();renderFormats(bb);renderApp();
+  });
+  box.appendChild(btn);
+ });
+}
+const EDIT_IDS=['m-title','m-author','m-pub','m-year','m-isbn','m-notes','m-desc'];
+function makeEditable(id,key,opt={}){
+ const el=$(id);el.classList.add('editable');
+ el.addEventListener('click',()=>{
+  if(el.dataset.editing)return;
+  const b=curBook();if(!b)return;
+  el.dataset.editing='1';
+  const inp=document.createElement(opt.multi?'textarea':'input');inp.className='edit-in';
+  inp.value=(key==='description'&&b[key]==='Nessuna trama disponibile.')?'':(b[key]||'');
+  if(opt.num)inp.setAttribute('inputmode','numeric');
+  el.textContent='';el.classList.remove('empty-val');el.appendChild(inp);inp.focus();
+  const finish=save=>{
+   if(!el.dataset.editing)return;delete el.dataset.editing;
+   if(save){
+    let v=inp.value.trim();
+    if(key==='title'&&!v)v=b.title;
+    if(key==='isbn')v=v.replace(/\s+/g,'');
+    if(key==='year'&&v&&!/^\d{1,4}$/.test(v))v=b.year||'';
+    b[key]=v;persist();renderApp();
+   }
+   fillDetail(b);
+  };
+  inp.addEventListener('blur',()=>finish(true));
+  inp.addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Escape')finish(false);else if(ev.key==='Enter'&&!opt.multi){ev.preventDefault();inp.blur();}});
+ });
+}
 function openDetails(b){
  detailId=b.id;
- $('m-title').textContent=b.title||'';
- $('m-author').textContent=b.author||'Autore sconosciuto';
- $('m-pub').textContent=b.publisher||'Non disponibile';
- $('m-year').textContent=b.year||'Non disponibile';
- $('m-isbn').textContent=b.isbn||'Non disponibile';
- setCover($('m-cover'),[b.cover,b.isbn&&'https://covers.openlibrary.org/b/isbn/'+cleanIsbn(b.isbn)+'-L.jpg?default=false'].filter(Boolean),b.title);
- $('m-desc').textContent=b.description||'Nessuna trama disponibile.';
+ EDIT_IDS.forEach(id=>delete $(id).dataset.editing);
+ fillDetail(b);
  $('m-status').value=stOf(b);$('m-start').value=okDate(b.startDate||'');$('m-end').value=okDate(b.endDate||'');
- const n=$('m-notes-box');n.style.display=b.notes?'block':'none';n.textContent=b.notes||'';
  renderRating();
  $('detail-modal').style.display='flex';
 }
@@ -761,7 +822,7 @@ function importBackup(file){
   const uid=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random();
   const incoming=arr.filter(x=>x&&typeof x==='object'&&str(x.title).trim()).map(x=>({
    id:str(x.id)||uid(),title:str(x.title).trim(),author:str(x.author),publisher:str(x.publisher),year:str(x.year),isbn:str(x.isbn),
-   notes:str(x.notes),status:normSt(x.status),rating:clampRating(x.rating),paused:x.paused===true,startDate:okDate(str(x.startDate)),endDate:okDate(str(x.endDate)),cover:safeUrl(str(x.cover)),description:str(x.description)||'Nessuna trama disponibile.',createdAt:Number(x.createdAt)||Date.now()}));
+   notes:str(x.notes),status:normSt(x.status),rating:clampRating(x.rating),paused:x.paused===true,formats:Array.isArray(x.formats)?FORMAT_KEYS.filter(f=>x.formats.includes(f)):[],startDate:okDate(str(x.startDate)),endDate:okDate(str(x.endDate)),cover:safeUrl(str(x.cover)),description:str(x.description)||'Nessuna trama disponibile.',createdAt:Number(x.createdAt)||Date.now()}));
   if(!incoming.length){backupMsg('Nessun libro valido nel file.',true);return;}
   const fresh=[];
   incoming.forEach(b=>{
@@ -813,6 +874,10 @@ $('btn-save').addEventListener('click',addBook);
 $('inp-filter').addEventListener('input',renderApp);
 $('sel-sort').addEventListener('change',renderApp);
 document.querySelectorAll('#tabs .tab').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;renderApp();}));
+makeEditable('m-title','title');makeEditable('m-author','author');makeEditable('m-pub','publisher');makeEditable('m-year','year',{num:true});
+makeEditable('m-isbn','isbn');makeEditable('m-notes','notes',{multi:true});makeEditable('m-desc','description',{multi:true});
+$('m-cover').classList.add('editable');
+$('m-cover').addEventListener('click',()=>{const b=curBook();if(!b)return;const u=prompt('URL della copertina (lascia vuoto per rimuoverla):',b.cover||'');if(u===null)return;b.cover=safeUrl(u.trim());persist();renderApp();fillDetail(b);});
 $('cal-back').addEventListener('click',closeCalendar);
 $('y-prev').addEventListener('click',()=>{calYear--;renderCalendar();});
 $('y-next').addEventListener('click',()=>{calYear++;renderCalendar();});
