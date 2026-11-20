@@ -60,8 +60,10 @@ button.ghost{background:transparent;color:var(--fg)}
 #m-notes-box{display:none;border-left:2px solid var(--fg);padding:4px 0 4px 12px;font-size:13px;font-style:italic;margin:16px 0}
 .empty{padding:36px 12px;text-align:center;color:var(--mut);font-size:13px}
 #reader{width:100%;overflow:hidden}
-#tabs{display:flex;gap:6px;margin:4px 0 14px;flex-wrap:wrap}
+#tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:4px 0 14px}
 .tab{padding:9px 14px;font-size:12px}
+#tabs .tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;min-height:56px;padding:10px 4px;border-radius:18px;font-size:11px;line-height:1.15;letter-spacing:.01em}
+#tabs .tab .list-ic{margin:0;vertical-align:0;color:inherit}
 .row-actions{display:flex;flex-direction:column;gap:6px;align-items:stretch}
 .row-actions button{width:auto;padding:8px 12px;font-size:12px;white-space:nowrap}
 .dates{font-size:12px;color:var(--mut);margin:0 0 6px}
@@ -101,7 +103,6 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
 #m-cover.editable{cursor:pointer}
 .list-ic{display:inline-flex;vertical-align:-3px;margin-right:6px;color:var(--fg)}
 .list-ic svg{width:var(--is,16px);height:var(--is,16px);fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.tab .list-ic{margin-right:5px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--mut);margin:12px 0 2px}
 .legend span{display:inline-flex;align-items:center}
 .legend .list-ic{margin-right:5px;color:var(--fg)}
