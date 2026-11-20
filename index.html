@@ -99,6 +99,12 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
 .chip{padding:8px 15px;font-size:12px}
 .m-text{font-size:14px;line-height:1.55;margin:0;white-space:pre-line}
 #m-cover.editable{cursor:pointer}
+.list-ic{display:inline-flex;vertical-align:-3px;margin-right:6px;color:var(--fg)}
+.list-ic svg{width:var(--is,16px);height:var(--is,16px);fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tab .list-ic{margin-right:5px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--mut);margin:12px 0 2px}
+.legend span{display:inline-flex;align-items:center}
+.legend .list-ic{margin-right:5px;color:var(--fg)}
 @media(max-width:380px){.form-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -133,10 +139,13 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
   <p class="label" style="margin:12px 0 0">Seleziona l’edizione</p>
   <div id="search-results-list"></div>
  </div>
- <div style="display:flex;align-items:center;gap:8px;margin:8px 0 6px">
+ <div style="display:flex;align-items:center;gap:8px;margin:8px 0 6px;flex-wrap:wrap">
   <label for="sel-dest" class="muted" style="font-size:12px;white-space:nowrap">Aggiungi a</label>
   <select id="sel-dest" style="margin:0;font-size:14px"><option value="buy">Desideri</option><option value="pile">Da leggere</option><option value="reading">In lettura</option><option value="read">Letti</option></select>
+  <button type="button" id="btn-manual" class="small-btn ghost" style="margin-left:auto" aria-expanded="false" aria-controls="manual-box">Inserimento manuale ▾</button>
  </div>
+ <div id="manual-box" hidden>
+ <p class="muted" style="font-size:11px;margin:4px 0 0">Il titolo è quello scritto nella barra di ricerca.</p>
  <div class="form-grid">
   <input type="text" id="inp-author" placeholder="Autore">
   <input type="text" id="inp-publisher" placeholder="Editore">
@@ -146,6 +155,7 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
  <input type="text" id="inp-notes" placeholder="Note (prezzo, condizione, mercatino)">
  <input type="url" id="inp-cover" placeholder="URL copertina (opzionale)">
  <button type="button" id="btn-save">Aggiungi alla lista</button>
+ </div>
 </section>
 
 <section style="margin-bottom:8px">
@@ -155,7 +165,7 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
   <button type="button" class="small-btn tab" data-tab="pile" id="tab-pile">Da leggere</button>
   <button type="button" class="small-btn tab" data-tab="buy" id="tab-buy">Desideri</button>
  </div>
- <input type="search" id="inp-filter" placeholder="Filtra per titolo, autore, editore, ISBN o note">
+ <input type="search" id="inp-filter" placeholder="Cerca in tutte le liste: titolo, autore, editore, ISBN, note">
  <div id="sort-row" style="display:flex;align-items:center;gap:8px">
   <label for="sel-sort" class="muted" style="font-size:12px;white-space:nowrap">Ordina</label>
   <select id="sel-sort" style="margin:0;font-size:14px">
@@ -460,6 +470,7 @@ async function performOnlineSearch(over){
     if($('inp-title').value.trim()===query)$('inp-title').value='';
     $('inp-isbn').value=isbn;
     $('inp-cover').value=await bestCover(coverCandidates({isbn}));
+    setManual(true);
     showMsg('ISBN non presente nei cataloghi: ho compilato ISBN'+($('inp-cover').value?' e copertina':'')+'. Scrivi titolo, autore ed editore a mano. ['+diag+']',true);
     return;
    }
@@ -545,6 +556,12 @@ function newBook(f){
   year:f.year||'',isbn:f.isbn||'',notes:f.notes||'',status:st,startDate:st==='reading'?today():'',endDate:'',rating:0,paused:false,formats:[],cover:safeUrl(f.cover||''),
   description:f.description||'Nessuna trama disponibile.',createdAt:Date.now()};
 }
+function setManual(open){
+ $('manual-box').hidden=!open;
+ $('btn-manual').textContent='Inserimento manuale '+(open?'▴':'▾');
+ $('btn-manual').setAttribute('aria-expanded',String(open));
+ if(open&&!$('inp-author').value)$('inp-author').focus();
+}
 function addBook(){
  const title=$('inp-title').value.trim();
  if(!title){showMsg('Inserisci almeno il titolo del libro.',true);$('inp-title').focus();return;}
@@ -554,6 +571,7 @@ function addBook(){
  ['inp-title','inp-author','inp-publisher','inp-year','inp-isbn','inp-notes','inp-cover'].forEach(id=>$(id).value='');
  currentSelectedDescription='';$('search-results-container').style.display='none';
  showMsg('Aggiunto a «'+LISTNAME[book.status]+'».');
+ setManual(false);
  if(book.status==='read')openDetails(book);
 }
 function deleteBook(id){
@@ -604,7 +622,7 @@ function starsNode(value,size,onPick){
  }
  return wrap;
 }
-function bookRow(book){
+function bookRow(book,showList){
  const st=stOf(book);
  const row=document.createElement('article');row.className='book-item';
  const main=document.createElement('div');main.className='book-item-main';main.tabIndex=0;main.setAttribute('role','button');main.setAttribute('aria-label','Apri '+(book.title||'scheda'));
@@ -612,6 +630,7 @@ function bookRow(book){
  setCover(img,[book.cover,book.isbn&&'https://covers.openlibrary.org/b/isbn/'+cleanIsbn(book.isbn)+'-M.jpg?default=false'].filter(Boolean),book.title);
  const info=document.createElement('div');info.className='book-info';
  const t=document.createElement('p');t.className='book-title';t.textContent=book.title||'Senza titolo';
+ if(showList)t.prepend(iconNode(st,16));
  const a=document.createElement('p');a.className='book-author';a.textContent=book.author||'Autore sconosciuto';
  info.append(t,a);
  if(st==='read'&&book.rating>0){const sr=document.createElement('p');sr.className='dates';sr.appendChild(starsNode(book.rating,13));info.appendChild(sr);}
@@ -632,6 +651,21 @@ function bookRow(book){
  const del=document.createElement('button');del.type='button';del.className='ghost';del.textContent='Elimina';del.setAttribute('aria-label','Elimina '+(book.title||'libro'));
  del.addEventListener('click',()=>deleteBook(book.id));act.appendChild(del);
  row.append(main,act);return row;
+}
+const ICONS={
+ reading:'<path d="M12 6.6C10.3 5.3 8 4.8 4 5v12.2c4-.2 6.3.3 8 1.6 1.7-1.3 4-1.8 8-1.6V5c-4-.2-6.3.3-8 1.6zM12 6.6v12.2"/>',
+ pile:'<path d="M5 4.5h14v4H5zM4 10h14v4H4zM6 15.5h14v4H6z"/>',
+ buy:'<path d="M12 19.6s-7-4.3-7-9.7A4 4 0 0 1 12 7.5a4 4 0 0 1 7 2.4c0 5.4-7 9.7-7 9.7z"/>',
+ read:'<circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/>'};
+function iconNode(key,size){
+ const sp=document.createElement('span');sp.className='list-ic';sp.style.setProperty('--is',(size||16)+'px');
+ sp.setAttribute('role','img');sp.setAttribute('aria-label',LISTNAME[key]);sp.title=LISTNAME[key];
+ sp.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+ICONS[key]+'</svg>';return sp;
+}
+function legendNode(){
+ const d=document.createElement('div');d.className='legend';
+ ['reading','pile','buy','read'].forEach(k=>{const s=document.createElement('span');s.appendChild(iconNode(k,14));s.appendChild(document.createTextNode(LISTNAME[k]));d.appendChild(s);});
+ return d;
 }
 function listHeader(text,count){const h=document.createElement('div');h.className='month-h';const a=document.createElement('p');a.className='label';a.style.margin='0';a.textContent=text;const b=document.createElement('p');b.className='label';b.style.margin='0';b.textContent=count;h.append(a,b);return h;}
 function emptyMsg(c,text){const p=document.createElement('p');p.className='empty';p.textContent=text;c.appendChild(p);}
@@ -669,24 +703,31 @@ function goalNode(year,clickable){
 function renderApp(){
  const cnt={buy:0,pile:0,reading:0,read:0};
  books.forEach(b=>{cnt[stOf(b)]++;});
- [['reading','In lettura'],['pile','Da leggere'],['buy','Desideri']].forEach(([k,n])=>{const el=$('tab-'+k);el.textContent=n+' '+cnt[k];el.classList.toggle('ghost',k!==tab);});
+ [['reading','In lettura'],['pile','Da leggere'],['buy','Desideri']].forEach(([k,n])=>{const el=$('tab-'+k);el.replaceChildren(iconNode(k,15),document.createTextNode(n+' '+cnt[k]));el.classList.toggle('ghost',!!$('inp-filter').value.trim()||k!==tab);});
  $('counter').textContent=books.length+' '+(books.length===1?'libro':'libri')+' in tutto · '+cnt.read+' letti';
  $('goal-box').replaceChildren(goalNode(new Date().getFullYear(),true));
  const filter=normalize($('inp-filter').value),sort=$('sel-sort').value;
  const matches=b=>!filter||[b.title,b.author,b.publisher,b.isbn,b.notes,b.year].map(normalize).join(' ').includes(filter);
  const c=$('books-container');c.replaceChildren();
- const list=books.filter(b=>stOf(b)===tab&&matches(b));
  const T=b=>Number(b.createdAt||0);
- list.sort((a,b)=>{
+ const cmp=(a,b)=>{
   if(sort==='newest')return T(b)-T(a);
   if(sort==='oldest')return T(a)-T(b);
   if(sort==='title')return (a.title||'').localeCompare(b.title||'','it',{sensitivity:'base'});
   if(sort==='authorLastname'){const l=s=>(s||'').trim().split(/\s+/).pop()||'';return l(a.author).localeCompare(l(b.author),'it',{sensitivity:'base'});}
   if(sort==='yearAsc')return (parseInt(a.year,10)||9999)-(parseInt(b.year,10)||9999);
   return (parseInt(b.year,10)||0)-(parseInt(a.year,10)||0);
- });
- if(!list.length){emptyMsg(c,filter?'Nessun libro corrisponde alla ricerca.':tab==='buy'?'Nessun desiderio. Cerca un libro e premi +.':tab==='pile'?'Nessun libro da leggere. Dai Desideri premi “L’ho comprato”.':'Nessuna lettura in corso. Da “Da leggere” premi “Inizia”.');}
- else list.forEach(b=>c.appendChild(bookRow(b)));
+ };
+ if(filter){
+  /* ricerca unica: una sola lista con tutti i libri trovati (anche i letti), ognuno con l'icona della sua lista */
+  const found=books.filter(matches).sort(cmp);
+  if(!found.length)emptyMsg(c,'Nessun libro corrisponde alla ricerca, in nessuna lista.');
+  else{c.appendChild(listHeader('Risultati in tutte le liste',found.length));c.appendChild(legendNode());found.forEach(x=>c.appendChild(bookRow(x,true)));}
+ }else{
+  const list=books.filter(b=>stOf(b)===tab).sort(cmp);
+  if(!list.length)emptyMsg(c,tab==='buy'?'Nessun desiderio. Cerca un libro e premi +.':tab==='pile'?'Nessun libro da leggere. Dai Desideri premi “L’ho comprato”.':'Nessuna lettura in corso. Da “Da leggere” premi “Inizia”.');
+  else list.forEach(b=>c.appendChild(bookRow(b)));
+ }
  if(!$('cal-view').hidden)renderCalendar();
 }
 /* ---------- Calendario dei libri letti ---------- */
@@ -871,9 +912,10 @@ $('inp-title').addEventListener('search',clearSearchUI);
 $('btn-search').addEventListener('click',()=>performOnlineSearch());
 $('inp-title').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();performOnlineSearch();}});
 $('btn-save').addEventListener('click',addBook);
+$('btn-manual').addEventListener('click',()=>setManual($('manual-box').hidden));
 $('inp-filter').addEventListener('input',renderApp);
 $('sel-sort').addEventListener('change',renderApp);
-document.querySelectorAll('#tabs .tab').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;renderApp();}));
+document.querySelectorAll('#tabs .tab').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;$('inp-filter').value='';renderApp();}));
 makeEditable('m-title','title');makeEditable('m-author','author');makeEditable('m-pub','publisher');makeEditable('m-year','year',{num:true});
 makeEditable('m-isbn','isbn');makeEditable('m-notes','notes',{multi:true});makeEditable('m-desc','description',{multi:true});
 $('m-cover').classList.add('editable');
