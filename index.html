@@ -191,6 +191,27 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
   <div id="cal-list"></div>
  </div>
 </div>
+<div id="info-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="i-title">
+ <div class="modal-content">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+   <h2 id="i-title" style="font-family:var(--serif);font-size:24px;line-height:1.15;margin:0 0 6px"></h2>
+   <button type="button" id="i-x" aria-label="Chiudi" class="small-btn ghost" style="border:0;font-size:22px;padding:0 6px">×</button>
+  </div>
+  <p id="i-author" class="muted" style="font-size:14px;margin:0 0 16px"></p>
+  <div style="display:flex;gap:16px;margin-bottom:8px">
+   <img id="i-cover" class="cover" alt="Copertina" style="width:96px;height:138px;flex-shrink:0">
+   <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0">
+    <p class="m-row"><b>Editore</b><span id="i-pub"></span></p>
+    <p class="m-row"><b>Anno</b><span id="i-year"></span></p>
+    <p class="m-row"><b>ISBN</b><span id="i-isbn"></span></p>
+   </div>
+  </div>
+  <p id="i-inlist" class="muted" style="font-size:12px;margin:10px 0 0;display:flex;align-items:center"></p>
+  <p class="label" style="margin-top:20px">Trama</p>
+  <p id="i-desc" class="m-text"></p>
+  <button type="button" id="i-close" class="ghost" style="width:100%;margin-top:24px">Chiudi</button>
+ </div>
+</div>
 <div id="detail-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
  <div class="modal-content">
   <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
@@ -230,9 +251,10 @@ textarea.edit-in{min-height:140px;resize:vertical;line-height:1.55}
 <script>
 'use strict';
 /* Proxy personale su Cloudflare (vedi guida). Lascia vuoto per usare solo i proxy pubblici. */
-const WORKER_URL=(window.BOOKLY_CONFIG&&BOOKLY_CONFIG.url)||'';   // impostato in config.js
-const WORKER_KEY=(window.BOOKLY_CONFIG&&BOOKLY_CONFIG.key)||'';
-const STORAGE_KEY='buy_books_full_v10';
+const CFG=window.BOOKI_CONFIG||window.BOOKLY_CONFIG||{};   // impostato in config.js (il vecchio nome resta valido)
+const WORKER_URL=CFG.url||'';
+const WORKER_KEY=CFG.key||'';
+const STORAGE_KEY='booki_books_v1',OLD_STORAGE_KEYS=['buy_books_full_v10'];
 const GB='https://www.googleapis.com/books/v1/volumes';
 const OL='https://openlibrary.org';
 let books=loadBooks(), currentSelectedDescription='', scanner=null, isScanning=false, searchController=null;
@@ -242,7 +264,14 @@ function fallbackCover(title){
  const t=(String(title||'?').trim()[0]||'?').toUpperCase();
  return 'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="145"><rect width="100%" height="100%" fill="#111"/><rect x="8" y="8" width="84" height="129" fill="none" stroke="#fff" stroke-width="1"/><text x="50%" y="56%" text-anchor="middle" fill="#fff" font-family="Georgia,serif" font-size="46">'+t.replace(/[<&]/g,'')+'</text></svg>');
 }
-function loadBooks(){try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(d)?d.filter(x=>x&&typeof x==='object'):[];}catch(e){return [];}}
+/* Legge la lista; se è la prima volta con il nuovo nome, copia i dati dalle chiavi precedenti (le vecchie restano come copia di sicurezza). */
+function loadBooks(){
+ try{
+  let raw=localStorage.getItem(STORAGE_KEY);
+  if(raw===null)for(const k of OLD_STORAGE_KEYS){const v=localStorage.getItem(k);if(v!==null){raw=v;try{localStorage.setItem(STORAGE_KEY,v);}catch(e){}break;}}
+  const d=JSON.parse(raw||'[]');return Array.isArray(d)?d.filter(x=>x&&typeof x==='object'):[];
+ }catch(e){return [];}
+}
 function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(books));return true;}catch(e){showMsg('Impossibile salvare: memoria piena o non disponibile.',true);return false;}}
 function showMsg(m,err=false){const b=$('msg-box');b.textContent='';if(!m)return;const p=document.createElement('p');p.className='msg'+(err?' error-msg':'');p.textContent=m;b.appendChild(p);}
 function normalize(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('it').trim();}
@@ -357,7 +386,7 @@ function renderSearchResults(results){
  results.forEach(r=>{
   const row=document.createElement('div');row.className='result-item';
   const img=document.createElement('img');img.className='cover';img.alt='';img.loading='lazy';setCover(img,coverCandidates(r),r.title);
-  const info=document.createElement('div');info.className='result-info';
+  const info=document.createElement('div');info.className='result-info';info.style.cursor='pointer';info.tabIndex=0;info.setAttribute('role','button');info.setAttribute('aria-label','Apri la scheda di '+r.title);img.style.cursor='pointer';
   const t=document.createElement('strong');t.textContent=r.title;
   const a=document.createElement('div');a.textContent=r.authors.join(', ')||'Autore non specificato';
   const m=document.createElement('div');m.className='muted';
@@ -365,9 +394,39 @@ function renderSearchResults(results){
   info.append(t,a,m);
   const b=document.createElement('button');b.type='button';b.className='pick';b.textContent='+';b.setAttribute('aria-label','Seleziona questa edizione');b.addEventListener('click',()=>selectResult(r,b));
   if(findDuplicate({title:r.title,author:(r.authors||[]).join(', '),isbn:r.isbn}))markDone(b);
+  img.addEventListener('click',()=>openInfo(r));info.addEventListener('click',()=>openInfo(r));
+  info.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openInfo(r);}});
   row.append(img,info,b);list.appendChild(row);
  });
 }
+/* Scheda informativa (sola lettura) di un risultato di ricerca: niente stato, date, voto, formato o note */
+let infoToken=0;
+function plainText(h){
+ try{return (new DOMParser().parseFromString(String(h||'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/p>/gi,'\n\n'),'text/html').body.textContent||'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
+ catch(e){return String(h||'').replace(/<[^>]*>/g,' ').trim();}
+}
+function fillInfo(d,loading){
+ setVal($('i-title'),d.title,'Senza titolo');
+ setVal($('i-author'),(d.authors||[]).join(', '),'Autore non specificato');
+ setVal($('i-pub'),d.publisher,'Non disponibile');setVal($('i-year'),d.year,'Non disponibile');setVal($('i-isbn'),d.isbn,'Non disponibile');
+ const desc=plainText(d.description);
+ setVal($('i-desc'),desc,loading?'Carico la trama…':'Trama non disponibile.');
+ setCover($('i-cover'),coverCandidates(d),d.title);
+ const dup=findDuplicate({title:d.title,author:(d.authors||[]).join(', '),isbn:d.isbn}),box=$('i-inlist');
+ box.replaceChildren();
+ if(dup){box.appendChild(iconNode(stOf(dup),14));box.appendChild(document.createTextNode('Già nella tua lista: '+LISTNAME[stOf(dup)]));}
+}
+async function openInfo(r){
+ const my=++infoToken;
+ fillInfo(r,!r.description);
+ $('info-modal').style.display='flex';
+ try{
+  const d=await enrich(r);
+  if(my!==infoToken||$('info-modal').style.display!=='flex')return;
+  fillInfo(d,false);
+ }catch(e){if(my===infoToken)fillInfo(r,false);}
+}
+function closeInfo(){infoToken++;$('info-modal').style.display='none';}
 function appleToResult(x){return {source:'Apple Books',sourceId:'',title:x.trackName||'',authors:x.artistName?[x.artistName]:[],publisher:'',year:yearOf(x.releaseDate),isbn:'',
  cover:safeUrl(String(x.artworkUrl100||'').replace('100x100bb','400x400bb')),description:String(x.description||'').replace(/<[^>]*>/g,' ').trim(),lang:''};}
 async function searchApple(q,signal){
@@ -542,8 +601,8 @@ const LISTNAME={buy:'Desideri',pile:'Da leggere',reading:'In lettura',read:'Lett
 const normSt=v=>({buy:'buy',wish:'buy',pile:'pile',toread:'pile',reading:'reading',read:'read'}[String(v)]||'buy');
 const clampRating=v=>{v=Math.round((Number(v)||0)*2)/2;return v<0?0:v>5?5:v;};
 let tab='reading',detailId=null;
-let goals={};try{goals=JSON.parse(localStorage.getItem('boomer_goals_v1')||'{}')||{};}catch(e){goals={};}
-function saveGoals(){try{localStorage.setItem('boomer_goals_v1',JSON.stringify(goals));}catch(e){}}
+let goals={};try{goals=JSON.parse(localStorage.getItem('booki_goals_v1')||localStorage.getItem('boomer_goals_v1')||'{}')||{};}catch(e){goals={};}
+function saveGoals(){try{localStorage.setItem('booki_goals_v1',JSON.stringify(goals));}catch(e){}}
 
 function addBookObject(book){
  const dup=findDuplicate(book);
@@ -845,10 +904,10 @@ function saveDetail(applyDefaults){
 function backupMsg(m,err=false){const b=$('backup-msg');b.textContent='';if(!m)return;const p=document.createElement('p');p.className='msg'+(err?' error-msg':'');p.textContent=m;b.appendChild(p);}
 function exportBackup(){
  if(!books.length){backupMsg('La lista è vuota: niente da esportare.',true);return;}
- const data=JSON.stringify({app:'boomer',version:2,exportedAt:new Date().toISOString(),books,goals},null,1);
+ const data=JSON.stringify({app:'booki',version:3,exportedAt:new Date().toISOString(),books,goals},null,1);
  const a=document.createElement('a');
  a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
- a.download='boomer-backup-'+new Date().toISOString().slice(0,10)+'.json';
+ a.download='booki-backup-'+new Date().toISOString().slice(0,10)+'.json';
  document.body.appendChild(a);a.click();a.remove();
  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
  backupMsg('Backup esportato: '+books.length+(books.length===1?' libro.':' libri.'));
@@ -857,7 +916,7 @@ function importBackup(file){
  const rd=new FileReader();
  rd.onerror=()=>backupMsg('Impossibile leggere il file.',true);
  rd.onload=()=>{
-  let data;try{data=JSON.parse(rd.result);}catch(e){backupMsg('File non valido: non è un backup di Bookly.',true);return;}
+  let data;try{data=JSON.parse(rd.result);}catch(e){backupMsg('File non valido: non è un backup di Bookì.',true);return;}
   const arr=Array.isArray(data)?data:(data&&Array.isArray(data.books)?data.books:null);
   if(!arr){backupMsg('Il file non contiene una lista di libri.',true);return;}
   if(data&&data.goals&&typeof data.goals==='object'){Object.keys(data.goals).forEach(y=>{if(/^\d{4}$/.test(y)&&!goals[y]&&parseInt(data.goals[y],10)>0)goals[y]=parseInt(data.goals[y],10);});saveGoals();}
@@ -928,8 +987,11 @@ $('y-next').addEventListener('click',()=>{calYear++;renderCalendar();});
 $('m-status').addEventListener('change',()=>saveDetail(true));
 $('m-start').addEventListener('change',()=>saveDetail(false));
 $('m-end').addEventListener('change',()=>saveDetail(false));
-try{const d=localStorage.getItem('boomer_dest');if(d&&['buy','pile','reading','read'].includes(d))$('sel-dest').value=d;}catch(e){}
-$('sel-dest').addEventListener('change',()=>{try{localStorage.setItem('boomer_dest',$('sel-dest').value);}catch(e){}});
+try{const d=localStorage.getItem('booki_dest_v1')||localStorage.getItem('boomer_dest');if(d&&['buy','pile','reading','read'].includes(d))$('sel-dest').value=d;}catch(e){}
+$('sel-dest').addEventListener('change',()=>{try{localStorage.setItem('booki_dest_v1',$('sel-dest').value);}catch(e){}});
+$('i-x').addEventListener('click',closeInfo);
+$('i-close').addEventListener('click',closeInfo);
+$('info-modal').addEventListener('click',e=>{if(e.target===$('info-modal'))closeInfo();});
 $('btn-export').addEventListener('click',exportBackup);
 $('btn-import').addEventListener('click',()=>$('file-import').click());
 $('file-import').addEventListener('change',e=>{const f=e.target.files[0];if(f)importBackup(f);e.target.value='';});
@@ -938,7 +1000,7 @@ $('btn-close-scanner').addEventListener('click',stopScanner);
 $('btn-x-modal').addEventListener('click',closeModal);
 $('btn-close-modal').addEventListener('click',closeModal);
 $('detail-modal').addEventListener('click',e=>{if(e.target===$('detail-modal'))closeModal();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('detail-modal').style.display==='flex')closeModal();else if(!$('cal-view').hidden)closeCalendar();if(isScanning)stopScanner();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('info-modal').style.display==='flex')closeInfo();else if($('detail-modal').style.display==='flex')closeModal();else if(!$('cal-view').hidden)closeCalendar();if(isScanning)stopScanner();}});
 renderApp();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
